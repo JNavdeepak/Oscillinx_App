@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
     View,
     Text,
@@ -8,39 +8,74 @@ import {
     TextInput,
     Image,
     TouchableOpacity,
+    ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/RootStack';
+import { supabase } from '../supabaseClient';
 
 const { width, height } = Dimensions.get('window');
-
-// Colors
 const homeBrown = '#4E1D02';
 const backBrown = '#C5A790';
 const msgBrown = '#633513';
 const borderRadius = 22;
 
-const messages = [
-    { type: 'system', text: "Welcome! How can I assist you today?", time: '' },
-
-    { type: 'user', text: "Hello! Can you help me understand how machine learning works?", time: "2:34 PM" },
-    {
-        type: 'bot',
-        text: "I'd be happy to help! Machine learning is a subset of artificial intelligence that enables computers to learn and make decisions from data without being explicitly programmed for every task.",
-        time: "2:34 PM"
-    },
-    { type: 'user', text: "That's interesting! Can you give me a simple example?", time: "2:35 PM" },
-    {
-        type: 'bot',
-        text: "Absolutely! Think of email spam detection. Instead of programming rules for every possible spam email, we feed the system thousands of examples of spam and legitimate emails. The algorithm learns patterns and can then identify new spam emails it has never seen before.",
-        time: "2:35 PM"
-    },
-    { type: 'user', text: "Perfect explanation! What are the main types of machine learning?", time: "2:36 PM" }
-];
+export type ChatMessage = {
+    id: string;
+    text: string;
+    author?: string;
+    created_at: string;
+};
 
 const ChatScreen: React.FC = () => {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'Chat'>>();
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [inputText, setInputText] = useState('');
+    const [loading, setLoading] = useState<boolean>(true);
+    const [error, setError] = useState<string | null>(null);
+    const [sending, setSending] = useState<boolean>(false);
+    const scrollRef = useRef<ScrollView>(null);
+
+    // Fetch all chat messages from Supabase
+    const fetchMessages = async () => {
+        setLoading(true); setError(null);
+        const { data, error } = await supabase
+            .from('messages')
+            .select('*')
+            .order('created_at', { ascending: false });
+        if (error) {
+            setError("Could not load messages: " + error.message);
+            setMessages([]);
+        } else {
+            setMessages((data as ChatMessage[]) || []);
+        }
+        setLoading(false);
+    };
+
+    useEffect(() => {
+        fetchMessages();
+    }, []);
+
+    // Send a message
+    const handleSend = async () => {
+        if (inputText.trim()) {
+            setSending(true);
+            const { error } = await supabase
+                .from('messages')
+                .insert([{ text: inputText, author: 'navdeepak' }]);
+            setSending(false);
+            if (error) {
+                setError("Message send failed: " + error.message);
+            } else {
+                setInputText('');
+                fetchMessages();
+                setTimeout(() => {
+                    scrollRef.current?.scrollToEnd({ animated: true });
+                }, 300);
+            }
+        }
+    };
 
     return (
         <View style={{ backgroundColor: backBrown, flex: 1 }}>
@@ -69,38 +104,46 @@ const ChatScreen: React.FC = () => {
 
             {/* Chat Bubble Area */}
             <ScrollView
+                ref={scrollRef}
                 style={styles.scroll}
                 contentContainerStyle={{ paddingVertical: width * 0.04, paddingHorizontal: width * 0.045, paddingBottom: 96 }}
                 showsVerticalScrollIndicator={false}
+                onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
             >
-                {messages.map((msg, idx) => {
-                    if (msg.type === 'system') {
+                {loading ? (
+                    <View style={{ flex: 1, alignItems: 'center', marginTop: 50 }}>
+                        <ActivityIndicator size="large" color={homeBrown} />
+                        <Text style={{ marginTop: 18, color: homeBrown, fontWeight: '700' }}>Loading messages...</Text>
+                    </View>
+                ) : error ? (
+                    <View style={{ flex: 1, alignItems: 'center', marginTop: 50 }}>
+                        <Text style={{ color: "#B00020", fontWeight: 'bold', fontSize: width * 0.045, marginBottom: 4 }}>
+                            {error}
+                        </Text>
+                        <TouchableOpacity
+                            style={{ marginTop: 14, backgroundColor: homeBrown, paddingHorizontal: 26, paddingVertical: 10, borderRadius: 14 }}
+                            onPress={fetchMessages}
+                        >
+                            <Text style={{ color: "#fff", fontWeight: 'bold' }}>Retry</Text>
+                        </TouchableOpacity>
+                    </View>
+                ) : messages.length === 0 ? (
+                    <View style={styles.systemMsgBubble}>
+                        <Text style={styles.systemMsgText}>No messages. Say hello!</Text>
+                    </View>
+                ) : (
+                    messages.slice().reverse().map((msg, idx) => {
+                        const isUser = msg.author === 'navdeepak';
                         return (
-                            <View key={idx} style={styles.systemMsgBubble}>
-                                <Text style={styles.systemMsgText}>{msg.text}</Text>
-                            </View>
-                        );
-                    }
-                    if (msg.type === 'user') {
-                        return (
-                            <View key={idx} style={styles.userMsgRow}>
-                                <View style={styles.userMsgBubble}>
-                                    <Text style={styles.userMsgText}>{msg.text}</Text>
+                            <View key={msg.id || msg.created_at || idx} style={isUser ? styles.userMsgRow : styles.botMsgRow}>
+                                <View style={isUser ? styles.userMsgBubble : styles.botMsgBubble}>
+                                    <Text style={isUser ? styles.userMsgText : styles.botMsgText}>{msg.text}</Text>
                                 </View>
-                                <Text style={styles.msgTime}>{msg.time}</Text>
+                                <Text style={styles.msgTime}>{msg.created_at ? new Date(msg.created_at).toLocaleTimeString() : ''}</Text>
                             </View>
                         );
-                    }
-                    // bot messages
-                    return (
-                        <View key={idx} style={styles.botMsgRow}>
-                            <View style={styles.botMsgBubble}>
-                                <Text style={styles.botMsgText}>{msg.text}</Text>
-                            </View>
-                            <Text style={styles.msgTime}>{msg.time}</Text>
-                        </View>
-                    );
-                })}
+                    })
+                )}
             </ScrollView>
 
             {/* Message Input Bar */}
@@ -117,9 +160,12 @@ const ChatScreen: React.FC = () => {
                         placeholder="Type your message..."
                         placeholderTextColor="#ADAEBC"
                         underlineColorAndroid="transparent"
+                        value={inputText}
+                        onChangeText={setInputText}
+                        editable={!sending && !loading && !error}
                     />
                 </View>
-                <TouchableOpacity style={styles.sendBtn}>
+                <TouchableOpacity style={styles.sendBtn} onPress={handleSend} disabled={sending || loading || !!error}>
                     <View style={styles.sendCircle}>
                         <Image
                             source={{ uri: 'https://cdn-icons-png.flaticon.com/128/9290/9290348.png' }}
@@ -130,7 +176,7 @@ const ChatScreen: React.FC = () => {
             </View>
         </View>
     );
-}
+};
 
 const styles = StyleSheet.create({
     header: {
@@ -257,7 +303,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     inputArea: {
-        width: width * 0.65, // sets fixed width, adjust for more or less
+        width: width * 0.65,
         backgroundColor: '#F3F4F6',
         borderRadius: width * 0.05,
         flexDirection: 'row',
@@ -270,13 +316,13 @@ const styles = StyleSheet.create({
     input: {
         flex: 1,
         fontSize: width * 0.035,
-        color: "#FFF",
+        color: "#222",
         fontWeight: '500',
         backgroundColor: 'transparent',
         paddingVertical: 0,
     },
     sendBtn: {
-        marginLeft: -width * 0.055, // slightly overlap right edge for floating button
+        marginLeft: -width * 0.055,
         zIndex: 5,
         alignSelf: 'center',
     },

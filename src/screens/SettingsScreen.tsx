@@ -1,35 +1,51 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-    View,
-    Text,
-    StyleSheet,
-    Dimensions,
-    ScrollView,
-    Image,
-    TouchableOpacity,
-    Switch,
-    Platform,
+    View, Text, StyleSheet, Dimensions, ScrollView, Image,
+    TouchableOpacity, Switch, Platform, ActivityIndicator
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/RootStack';
+import { supabase } from '../supabaseClient'; // Adjust if needed
 
 const { width, height } = Dimensions.get('window');
 const borderR = 18;
-
 const lightBg = '#F9EFE7';
 const cardBg = '#C5A790';
 const brown = '#4E1D02';
 const tan = '#A78C7B';
 
+// ---- SETTINGS TYPE ----
+type AppSettings = {
+    id: string;
+    smartSugg: boolean;
+    autoC: boolean;
+    learnM: boolean;
+    darkMode: boolean;
+    animations: boolean;
+    pushNotif: boolean;
+    emailUpd: boolean;
+    soundFx: boolean;
+    fontSize: number;
+    dataEnc: boolean;
+    privMode: boolean;
+};
+
+const CustomSwitch = ({ value, onValueChange, disabled }: { value: boolean, onValueChange: (val: boolean) => void, disabled: boolean }) => (
+    <Switch
+        trackColor={{ false: '#EFE4DD', true: '#8A6848' }}
+        thumbColor={value ? brown : tan}
+        ios_backgroundColor="#EEE"
+        onValueChange={onValueChange}
+        value={value}
+        disabled={disabled}
+        style={{ transform: [{ scaleX: 1.12 }, { scaleY: 1.12 }] }}
+    />
+);
+
 const SettingRow = ({
-    icon,
-    label,
-    desc,
-    onPress,
-    isDanger,
-    next = true,
+    icon, label, desc, onPress, isDanger, next = true,
 }: {
     icon?: React.ReactNode;
     label: string;
@@ -52,32 +68,81 @@ const SettingRow = ({
     </TouchableOpacity>
 );
 
-const CustomSwitch = ({ value, onValueChange, disabled }: any) => (
-    <Switch
-        trackColor={{ false: '#EFE4DD', true: '#8A6848' }}
-        thumbColor={value ? brown : tan}
-        ios_backgroundColor="#EEE"
-        onValueChange={onValueChange}
-        value={value}
-        disabled={disabled}
-        style={{ transform: [{ scaleX: 1.12 }, { scaleY: 1.12 }] }}
-    />
-);
-
 const SettingsScreen: React.FC = () => {
-    // States for all toggles/sliders
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'Settings'>>();
-    const [smartSugg, setSmartSugg] = useState(true);
-    const [autoC, setAutoC] = useState(true);
-    const [learnM, setLearnM] = useState(false);
-    const [darkMode, setDarkMode] = useState(false);
-    const [animations, setAnimations] = useState(true);
-    const [pushNotif, setPushNotif] = useState(false);
-    const [emailUpd, setEmailUpd] = useState(false);
-    const [soundFx, setSoundFx] = useState(true);
-    const [fontSize, setFontSize] = useState(0.5);
-    const [dataEnc, setDataEnc] = useState(true);
-    const [privMode, setPrivMode] = useState(false);
+    const [settings, setSettings] = useState<AppSettings | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    // --- Fetch settings initially ---
+    const fetchSettings = async () => {
+        setLoading(true); setError(null);
+        const { data, error } = await supabase.from('settings').select('*').limit(1).single();
+        if (error) {
+            setError("Could not load settings: " + error.message);
+            setSettings(null);
+        } else if (!data) {
+            setSettings(null);
+            setError(null);
+        } else {
+            setSettings(data as AppSettings);
+            setError(null);
+        }
+        setLoading(false);
+    };
+
+    useEffect(() => { fetchSettings(); }, []);
+
+    // --- Update one setting in Supabase ---
+    const updateSetting = async (field: keyof AppSettings, value: boolean | number) => {
+        if (!settings) return;
+        setSettings({ ...settings, [field]: value });
+        await supabase.from('settings')
+            .update({ [field]: value })
+            .eq('id', settings.id);
+    };
+
+    // --- Loading/Error/Empty States ---
+    if (loading) {
+        return (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: lightBg }}>
+                <ActivityIndicator size="large" color={brown} />
+                <Text style={{ marginTop: 25, color: brown, fontWeight: '600', fontSize: 18 }}>
+                    Loading settings...
+                </Text>
+            </View>
+        );
+    }
+
+    if (error) {
+        return (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: lightBg }}>
+                <Text style={{ color: "#B00020", fontWeight: 'bold', fontSize: 22, marginBottom: 8 }}>
+                    {error}
+                </Text>
+                <TouchableOpacity
+                    style={{ marginTop: 8, backgroundColor: brown, paddingHorizontal: 27, paddingVertical: 12, borderRadius: 16 }}
+                    onPress={fetchSettings}>
+                    <Text style={{ color: "#fff", fontWeight: 'bold' }}>Retry</Text>
+                </TouchableOpacity>
+            </View>
+        );
+    }
+
+    if (!settings) {
+        return (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: lightBg }}>
+                <Text style={{ color: brown, fontSize: 20, marginBottom: 13 }}>
+                    No settings found.
+                </Text>
+                <TouchableOpacity
+                    style={{ marginTop: 7, backgroundColor: brown, paddingHorizontal: 22, paddingVertical: 12, borderRadius: 14 }}
+                    onPress={fetchSettings}>
+                    <Text style={{ color: "#fff", fontWeight: 'bold' }}>Retry</Text>
+                </TouchableOpacity>
+            </View>
+        );
+    }
 
     return (
         <View style={{ flex: 1, backgroundColor: lightBg }}>
@@ -94,7 +159,7 @@ const SettingsScreen: React.FC = () => {
             </View>
 
             <ScrollView contentContainerStyle={{ paddingBottom: width * 0.13 }}>
-                {/* Profile Card */}
+                {/* Profile Card (same as before) */}
                 <View style={styles.profileCard}>
                     <View style={styles.avatarContainer}>
                         <Image
@@ -124,21 +189,33 @@ const SettingsScreen: React.FC = () => {
                             <Text style={styles.cardLabel}>Smart Suggestions</Text>
                             <Text style={styles.cardDesc}>Get AI-powered recommendations</Text>
                         </View>
-                        <CustomSwitch value={smartSugg} onValueChange={setSmartSugg} />
+                        <CustomSwitch
+                            value={settings.smartSugg}
+                            onValueChange={(val: boolean) => updateSetting('smartSugg', val)}
+                            disabled={loading}
+                        />
                     </View>
                     <View style={styles.rowBetween}>
                         <View>
                             <Text style={styles.cardLabel}>Auto-Complete</Text>
                             <Text style={styles.cardDesc}>Complete text as you type</Text>
                         </View>
-                        <CustomSwitch value={autoC} onValueChange={setAutoC} />
+                        <CustomSwitch
+                            value={settings.autoC}
+                            onValueChange={(val: boolean) => updateSetting('autoC', val)}
+                            disabled={loading}
+                        />
                     </View>
                     <View style={styles.rowBetween}>
                         <View>
                             <Text style={styles.cardLabel}>Learning Mode</Text>
                             <Text style={styles.cardDesc}>Adapt to your preferences</Text>
                         </View>
-                        <CustomSwitch value={learnM} onValueChange={setLearnM} />
+                        <CustomSwitch
+                            value={settings.learnM}
+                            onValueChange={(val: boolean) => updateSetting('learnM', val)}
+                            disabled={loading}
+                        />
                     </View>
                     <View style={[styles.rowBetween, { marginTop: width * 0.013, alignItems: 'flex-end' }]}>
                         <Text style={styles.cardLabel}>Response Speed</Text>
@@ -148,11 +225,12 @@ const SettingsScreen: React.FC = () => {
                         style={styles.slider}
                         minimumValue={0}
                         maximumValue={1}
-                        value={0.7}
+                        value={settings.fontSize}
+                        onValueChange={(val: number) => updateSetting('fontSize', val)}
                         minimumTrackTintColor="#3F74F1"
                         maximumTrackTintColor="#C3B19C"
                         thumbTintColor="#3576ED"
-                        disabled={false}
+                        disabled={loading}
                     />
                     <View style={styles.sliderLabels}>
                         <Text style={styles.sliderMini}>Slow</Text>
@@ -169,7 +247,11 @@ const SettingsScreen: React.FC = () => {
                             <Text style={styles.cardLabel}>Dark Mode</Text>
                             <Text style={styles.cardDesc}>Use dark theme</Text>
                         </View>
-                        <CustomSwitch value={darkMode} onValueChange={setDarkMode} />
+                        <CustomSwitch
+                            value={settings.darkMode}
+                            onValueChange={(val: boolean) => updateSetting('darkMode', val)}
+                            disabled={loading}
+                        />
                     </View>
                     <View style={[styles.rowBetween, { marginVertical: width * 0.01, alignItems: 'center' }]}>
                         <Text style={styles.cardLabel}>Font Size</Text>
@@ -179,11 +261,12 @@ const SettingsScreen: React.FC = () => {
                         style={styles.slider}
                         minimumValue={0}
                         maximumValue={1}
-                        value={fontSize}
-                        onValueChange={setFontSize}
+                        value={settings.fontSize}
+                        onValueChange={(val: number) => updateSetting('fontSize', val)}
                         minimumTrackTintColor="#3F74F1"
                         maximumTrackTintColor="#C3B19C"
                         thumbTintColor="#3576ED"
+                        disabled={loading}
                     />
                     <View style={styles.sliderLabels}>
                         <Text style={styles.sliderMini}>Small</Text>
@@ -195,7 +278,11 @@ const SettingsScreen: React.FC = () => {
                             <Text style={styles.cardLabel}>Animations</Text>
                             <Text style={styles.cardDesc}>Enable smooth transitions</Text>
                         </View>
-                        <CustomSwitch value={animations} onValueChange={setAnimations} />
+                        <CustomSwitch
+                            value={settings.animations}
+                            onValueChange={(val: boolean) => updateSetting('animations', val)}
+                            disabled={loading}
+                        />
                     </View>
                 </View>
 
@@ -207,21 +294,33 @@ const SettingsScreen: React.FC = () => {
                             <Text style={styles.cardLabel}>Push Notifications</Text>
                             <Text style={styles.cardDesc}>Receive alerts and updates</Text>
                         </View>
-                        <CustomSwitch value={pushNotif} onValueChange={setPushNotif} />
+                        <CustomSwitch
+                            value={settings.pushNotif}
+                            onValueChange={(val: boolean) => updateSetting('pushNotif', val)}
+                            disabled={loading}
+                        />
                     </View>
                     <View style={styles.rowBetween}>
                         <View>
                             <Text style={styles.cardLabel}>Email Updates</Text>
                             <Text style={styles.cardDesc}>Weekly digest and news</Text>
                         </View>
-                        <CustomSwitch value={emailUpd} onValueChange={setEmailUpd} />
+                        <CustomSwitch
+                            value={settings.emailUpd}
+                            onValueChange={(val: boolean) => updateSetting('emailUpd', val)}
+                            disabled={loading}
+                        />
                     </View>
                     <View style={styles.rowBetween}>
                         <View>
                             <Text style={styles.cardLabel}>Sound Effects</Text>
                             <Text style={styles.cardDesc}>Audio feedback for actions</Text>
                         </View>
-                        <CustomSwitch value={soundFx} onValueChange={setSoundFx} />
+                        <CustomSwitch
+                            value={settings.soundFx}
+                            onValueChange={(val: boolean) => updateSetting('soundFx', val)}
+                            disabled={loading}
+                        />
                     </View>
                 </View>
 
@@ -231,11 +330,19 @@ const SettingsScreen: React.FC = () => {
                     <SettingRow label="Biometric Lock" desc="Use fingerprint or Face ID" onPress={() => { }} />
                     <View style={styles.rowBetween}>
                         <Text style={styles.cardLabel}>Data Encryption</Text>
-                        <CustomSwitch value={dataEnc} onValueChange={setDataEnc} />
+                        <CustomSwitch
+                            value={settings.dataEnc}
+                            onValueChange={(val: boolean) => updateSetting('dataEnc', val)}
+                            disabled={loading}
+                        />
                     </View>
                     <View style={styles.rowBetween}>
                         <Text style={styles.cardLabel}>Private Mode</Text>
-                        <CustomSwitch value={privMode} onValueChange={setPrivMode} />
+                        <CustomSwitch
+                            value={settings.privMode}
+                            onValueChange={(val: boolean) => updateSetting('privMode', val)}
+                            disabled={loading}
+                        />
                     </View>
                 </View>
 
@@ -253,13 +360,6 @@ const SettingsScreen: React.FC = () => {
                     <SettingRow label="Contact Support" onPress={() => { }} next />
                     <SettingRow label="Rate App" onPress={() => { }} next />
                 </View>
-
-                {/* Sign Out Button */}
-                {/* <TouchableOpacity
-                    style={styles.signOutBtn}
-                >
-                    <Text style={styles.signOutBtnText}>Sign Out</Text>
-                </TouchableOpacity> */}
 
                 <Text style={styles.versionLabel}>Version 1.0.0</Text>
             </ScrollView>
