@@ -1,14 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
-    View,
-    Text,
-    StyleSheet,
-    Dimensions,
-    ScrollView,
-    TextInput,
-    Image,
-    TouchableOpacity,
-    ActivityIndicator,
+    View, Text, StyleSheet, Dimensions, ScrollView, TextInput,
+    Image, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -20,6 +13,9 @@ const homeBrown = '#4E1D02';
 const backBrown = '#C5A790';
 const msgBrown = '#633513';
 const borderRadius = 22;
+
+// Backend configuration
+const BACKEND_URL = 'http://192.168.1.X:5000'; // Replace X with your actual IP
 
 export type ChatMessage = {
     id: string;
@@ -37,13 +33,36 @@ const ChatScreen: React.FC = () => {
     const [sending, setSending] = useState<boolean>(false);
     const scrollRef = useRef<ScrollView>(null);
 
+    // ---- Active Model State ----
+    const [activeModel, setActiveModel] = useState<any>(null);
+
+    const fetchActiveModel = async () => {
+        const { data, error } = await supabase
+            .from('models')
+            .select('*')
+            .eq('is_active', true)
+            .eq('status', 'downloaded')
+            .maybeSingle();
+        if (!error && data) setActiveModel(data);
+        else setActiveModel(null);
+    };
+
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('focus', () => {
+            fetchActiveModel();
+            fetchMessages();
+        });
+        return unsubscribe;
+    }, [navigation]);
+
     // Fetch all chat messages from Supabase
     const fetchMessages = async () => {
-        setLoading(true); setError(null);
+        setLoading(true);
+        setError(null);
         const { data, error } = await supabase
             .from('messages')
             .select('*')
-            .order('created_at', { ascending: false });
+            .order('created_at', { ascending: true });
         if (error) {
             setError("Could not load messages: " + error.message);
             setMessages([]);
@@ -57,23 +76,99 @@ const ChatScreen: React.FC = () => {
         fetchMessages();
     }, []);
 
-    // Send a message
+    // Send a message with AI response
     const handleSend = async () => {
-        if (inputText.trim()) {
-            setSending(true);
-            const { error } = await supabase
+        if (!activeModel) {
+            setError("No active model selected — please select one on Models screen.");
+            return;
+        }
+
+        if (!inputText.trim()) {
+            return;
+        }
+
+        setSending(true);
+        setError(null);
+
+        try {
+            // 1. Save user message to database
+            const { error: insertError } = await supabase
                 .from('messages')
-                .insert([{ text: inputText, author: 'navdeepak' }]);
-            setSending(false);
-            if (error) {
-                setError("Message send failed: " + error.message);
-            } else {
-                setInputText('');
-                fetchMessages();
-                setTimeout(() => {
-                    scrollRef.current?.scrollToEnd({ animated: true });
-                }, 300);
+                .insert([{
+                    text: inputText,
+                    author: 'navdeepak',
+                    model_id: activeModel.id,
+                    created_at: new Date().toISOString()
+                }]);
+
+            if (insertError) {
+                throw new Error(`Failed to save message: ${insertError.message}`);
             }
+
+            const userMessage = inputText;
+            setInputText('');
+
+            // 2. Call backend for AI response with AbortController for timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 seconds
+
+            let aiResponse;
+            try {
+                aiResponse = await fetch(`${BACKEND_URL}/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        model_id: activeModel.name || activeModel.id,
+                        user_message: userMessage
+                    }),
+                    signal: controller.signal
+                });
+            } finally {
+                clearTimeout(timeoutId);
+            }
+
+            if (!aiResponse.ok) {
+                const errorData = await aiResponse.json();
+                throw new Error(errorData.error || `AI service error: ${aiResponse.status}`);
+            }
+
+            const { bot_reply } = await aiResponse.json();
+
+            // 3. Save bot response to database
+            const { error: botInsertError } = await supabase
+                .from('messages')
+                .insert([{
+                    text: bot_reply,
+                    author: 'bot',
+                    model_id: activeModel.id,
+                    created_at: new Date().toISOString()
+                }]);
+
+            if (botInsertError) {
+                console.warn('Failed to save bot response:', botInsertError);
+            }
+
+            // 4. Refresh messages
+            await fetchMessages();
+
+            // 5. Auto scroll to bottom
+            setTimeout(() => {
+                scrollRef.current?.scrollToEnd({ animated: true });
+            }, 300);
+
+        } catch (error: any) {
+            if (error.name === 'AbortError') {
+                setError('Request timeout - Model is taking too long to respond. Try again.');
+            } else if (error.message.includes('Failed to fetch')) {
+                setError('Cannot reach backend. Make sure server is running on ' + BACKEND_URL);
+            } else {
+                setError(`Error: ${error.message || String(error)}`);
+            }
+            console.error('Chat error:', error);
+        } finally {
+            setSending(false);
         }
     };
 
@@ -87,13 +182,17 @@ const ChatScreen: React.FC = () => {
                         style={{ width: width * 0.05, height: width * 0.05, tintColor: '#fff', bottom: height * 0.006, right: width * 0.03 }}
                     />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Llama-2 7B</Text>
-                <TouchableOpacity>
-                    <Image
-                        source={{ uri: 'https://cdn-icons-png.flaticon.com/128/152/152415.png' }}
-                        style={{ width: width * 0.03, height: width * 0.03, tintColor: '#fff', bottom: height * 0.007, right: width * 0.18 }}
-                    />
-                </TouchableOpacity>
+                {/* Model name and description in header */}
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.headerTitle}>
+                        {activeModel ? activeModel.name : 'No Active Model'}
+                    </Text>
+                    {activeModel && (
+                        <Text style={{ color: '#FFD24C', textAlign: 'center', fontWeight: 'bold', fontSize: width * 0.032 }}>
+                            {activeModel.description}
+                        </Text>
+                    )}
+                </View>
                 <TouchableOpacity style={styles.headerStack} onPress={() => navigation.navigate('Models')}>
                     <Image
                         source={{ uri: 'https://cdn-icons-png.flaticon.com/128/1203/1203985.png' }}
@@ -115,7 +214,7 @@ const ChatScreen: React.FC = () => {
                         <ActivityIndicator size="large" color={homeBrown} />
                         <Text style={{ marginTop: 18, color: homeBrown, fontWeight: '700' }}>Loading messages...</Text>
                     </View>
-                ) : error ? (
+                ) : error && messages.length === 0 ? (
                     <View style={{ flex: 1, alignItems: 'center', marginTop: 50 }}>
                         <Text style={{ color: "#B00020", fontWeight: 'bold', fontSize: width * 0.045, marginBottom: 4 }}>
                             {error}
@@ -132,7 +231,7 @@ const ChatScreen: React.FC = () => {
                         <Text style={styles.systemMsgText}>No messages. Say hello!</Text>
                     </View>
                 ) : (
-                    messages.slice().reverse().map((msg, idx) => {
+                    messages.map((msg, idx) => {
                         const isUser = msg.author === 'navdeepak';
                         return (
                             <View key={msg.id || msg.created_at || idx} style={isUser ? styles.userMsgRow : styles.botMsgRow}>
@@ -145,6 +244,13 @@ const ChatScreen: React.FC = () => {
                     })
                 )}
             </ScrollView>
+
+            {/* Error message display during chat */}
+            {error && messages.length > 0 && (
+                <View style={{ backgroundColor: '#ffebee', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, marginHorizontal: 12, marginBottom: 8 }}>
+                    <Text style={{ color: '#B00020', fontSize: width * 0.032, fontWeight: '500' }}>{error}</Text>
+                </View>
+            )}
 
             {/* Message Input Bar */}
             <View style={styles.inputBarWrapper}>
@@ -162,15 +268,19 @@ const ChatScreen: React.FC = () => {
                         underlineColorAndroid="transparent"
                         value={inputText}
                         onChangeText={setInputText}
-                        editable={!sending && !loading && !error}
+                        editable={!sending && !loading}
                     />
                 </View>
-                <TouchableOpacity style={styles.sendBtn} onPress={handleSend} disabled={sending || loading || !!error}>
+                <TouchableOpacity style={styles.sendBtn} onPress={handleSend} disabled={sending || loading}>
                     <View style={styles.sendCircle}>
-                        <Image
-                            source={{ uri: 'https://cdn-icons-png.flaticon.com/128/9290/9290348.png' }}
-                            style={styles.sendIcon}
-                        />
+                        {sending ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                            <Image
+                                source={{ uri: 'https://cdn-icons-png.flaticon.com/128/9290/9290348.png' }}
+                                style={styles.sendIcon}
+                            />
+                        )}
                     </View>
                 </TouchableOpacity>
             </View>
@@ -201,6 +311,7 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         flex: 1,
         textAlign: 'center',
+        top: height * 0.05,
     },
     headerStack: {
         alignItems: 'center',
@@ -295,12 +406,6 @@ const styles = StyleSheet.create({
         opacity: 0.8,
         right: width * 0.05,
         top: height * 0.005,
-    },
-    inputRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flex: 1,
-        justifyContent: 'center',
     },
     inputArea: {
         width: width * 0.65,

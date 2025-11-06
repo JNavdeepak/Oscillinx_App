@@ -163,7 +163,7 @@ const SettingsScreen: React.FC = () => {
                 <View style={styles.profileCard}>
                     <View style={styles.avatarContainer}>
                         <Image
-                            source={require('../assets/Navdeepak.png')}
+                            source={require('../assets/navdeepak.png')}
                             style={styles.avatar}
                         />
                     </View>
