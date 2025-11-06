@@ -89,7 +89,7 @@ const ModelsScreen: React.FC = () => {
                         setDownloadProgress(Math.round(overall));
                     });
 
-                await sleep(600);
+                await sleep(6000);
                 setDownloadProgress(Math.round(((i + 1) / urlsArray.length) * 100));
             }
 
