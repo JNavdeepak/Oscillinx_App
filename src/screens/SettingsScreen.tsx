@@ -7,7 +7,7 @@ import Slider from '@react-native-community/slider';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/RootStack';
-import { supabase } from '../supabaseClient'; // Adjust if needed
+import { supabase } from '../supabaseClient';
 
 const { width, height } = Dimensions.get('window');
 const borderR = 18;
@@ -16,7 +16,6 @@ const cardBg = '#C5A790';
 const brown = '#4E1D02';
 const tan = '#A78C7B';
 
-// ---- SETTINGS TYPE ----
 type AppSettings = {
     id: string;
     smartSugg: boolean;
@@ -32,7 +31,7 @@ type AppSettings = {
     privMode: boolean;
 };
 
-const CustomSwitch = ({ value, onValueChange, disabled }: { value: boolean, onValueChange: (val: boolean) => void, disabled: boolean }) => (
+const CustomSwitch = ({ value, onValueChange, disabled }: { value: boolean; onValueChange: (val: boolean) => void; disabled: boolean }) => (
     <Switch
         trackColor={{ false: '#EFE4DD', true: '#8A6848' }}
         thumbColor={value ? brown : tan}
@@ -45,7 +44,12 @@ const CustomSwitch = ({ value, onValueChange, disabled }: { value: boolean, onVa
 );
 
 const SettingRow = ({
-    icon, label, desc, onPress, isDanger, next = true,
+    icon,
+    label,
+    desc,
+    onPress,
+    isDanger,
+    next = true,
 }: {
     icon?: React.ReactNode;
     label: string;
@@ -74,12 +78,20 @@ const SettingsScreen: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // --- Fetch settings initially ---
+    const TEST_USER_ID = 'test-user-123';
+
     const fetchSettings = async () => {
-        setLoading(true); setError(null);
-        const { data, error } = await supabase.from('settings').select('*').limit(1).single();
-        if (error) {
-            setError("Could not load settings: " + error.message);
+        setLoading(true);
+        setError(null);
+
+        const { data, error: fetchError } = await supabase
+            .from('settings')
+            .select('*')
+            .eq('userId', TEST_USER_ID)
+            .single();
+
+        if (fetchError) {
+            setError('Could not load settings: ' + fetchError.message);
             setSettings(null);
         } else if (!data) {
             setSettings(null);
@@ -91,25 +103,21 @@ const SettingsScreen: React.FC = () => {
         setLoading(false);
     };
 
-    useEffect(() => { fetchSettings(); }, []);
-
-    // --- Update one setting in Supabase ---
     const updateSetting = async (field: keyof AppSettings, value: boolean | number) => {
         if (!settings) return;
         setSettings({ ...settings, [field]: value });
-        await supabase.from('settings')
-            .update({ [field]: value })
-            .eq('id', settings.id);
+        await supabase.from('settings').update({ [field]: value }).eq('id', settings.id);
     };
 
-    // --- Loading/Error/Empty States ---
+    useEffect(() => {
+        fetchSettings();
+    }, []);
+
     if (loading) {
         return (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: lightBg }}>
                 <ActivityIndicator size="large" color={brown} />
-                <Text style={{ marginTop: 25, color: brown, fontWeight: '600', fontSize: 18 }}>
-                    Loading settings...
-                </Text>
+                <Text style={{ marginTop: 25, color: brown, fontWeight: '600', fontSize: 18 }}>Loading settings...</Text>
             </View>
         );
     }
@@ -117,13 +125,11 @@ const SettingsScreen: React.FC = () => {
     if (error) {
         return (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: lightBg }}>
-                <Text style={{ color: "#B00020", fontWeight: 'bold', fontSize: 22, marginBottom: 8 }}>
-                    {error}
-                </Text>
+                <Text style={{ color: '#B00020', fontWeight: 'bold', fontSize: 22, marginBottom: 8 }}>{error}</Text>
                 <TouchableOpacity
                     style={{ marginTop: 8, backgroundColor: brown, paddingHorizontal: 27, paddingVertical: 12, borderRadius: 16 }}
                     onPress={fetchSettings}>
-                    <Text style={{ color: "#fff", fontWeight: 'bold' }}>Retry</Text>
+                    <Text style={{ color: '#fff', fontWeight: 'bold' }}>Retry</Text>
                 </TouchableOpacity>
             </View>
         );
@@ -132,13 +138,11 @@ const SettingsScreen: React.FC = () => {
     if (!settings) {
         return (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: lightBg }}>
-                <Text style={{ color: brown, fontSize: 20, marginBottom: 13 }}>
-                    No settings found.
-                </Text>
+                <Text style={{ color: brown, fontSize: 20, marginBottom: 13 }}>No settings found.</Text>
                 <TouchableOpacity
                     style={{ marginTop: 7, backgroundColor: brown, paddingHorizontal: 22, paddingVertical: 12, borderRadius: 14 }}
                     onPress={fetchSettings}>
-                    <Text style={{ color: "#fff", fontWeight: 'bold' }}>Retry</Text>
+                    <Text style={{ color: '#fff', fontWeight: 'bold' }}>Retry</Text>
                 </TouchableOpacity>
             </View>
         );
@@ -155,17 +159,14 @@ const SettingsScreen: React.FC = () => {
                     />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Settings</Text>
-                <View style={{ width: width * 0.10 }} />
+                <View style={{ width: width * 0.1 }} />
             </View>
 
             <ScrollView contentContainerStyle={{ paddingBottom: width * 0.13 }}>
-                {/* Profile Card (same as before) */}
+                {/* Profile Card */}
                 <View style={styles.profileCard}>
                     <View style={styles.avatarContainer}>
-                        <Image
-                            source={require('../assets/navdeepak.png')}
-                            style={styles.avatar}
-                        />
+                        <Image source={require('../assets/navdeepak.png')} style={styles.avatar} />
                     </View>
                     <TouchableOpacity>
                         <View>
@@ -189,33 +190,21 @@ const SettingsScreen: React.FC = () => {
                             <Text style={styles.cardLabel}>Smart Suggestions</Text>
                             <Text style={styles.cardDesc}>Get AI-powered recommendations</Text>
                         </View>
-                        <CustomSwitch
-                            value={settings.smartSugg}
-                            onValueChange={(val: boolean) => updateSetting('smartSugg', val)}
-                            disabled={loading}
-                        />
+                        <CustomSwitch value={settings.smartSugg} onValueChange={(val: boolean) => updateSetting('smartSugg', val)} disabled={loading} />
                     </View>
                     <View style={styles.rowBetween}>
                         <View>
                             <Text style={styles.cardLabel}>Auto-Complete</Text>
                             <Text style={styles.cardDesc}>Complete text as you type</Text>
                         </View>
-                        <CustomSwitch
-                            value={settings.autoC}
-                            onValueChange={(val: boolean) => updateSetting('autoC', val)}
-                            disabled={loading}
-                        />
+                        <CustomSwitch value={settings.autoC} onValueChange={(val: boolean) => updateSetting('autoC', val)} disabled={loading} />
                     </View>
                     <View style={styles.rowBetween}>
                         <View>
                             <Text style={styles.cardLabel}>Learning Mode</Text>
                             <Text style={styles.cardDesc}>Adapt to your preferences</Text>
                         </View>
-                        <CustomSwitch
-                            value={settings.learnM}
-                            onValueChange={(val: boolean) => updateSetting('learnM', val)}
-                            disabled={loading}
-                        />
+                        <CustomSwitch value={settings.learnM} onValueChange={(val: boolean) => updateSetting('learnM', val)} disabled={loading} />
                     </View>
                     <View style={[styles.rowBetween, { marginTop: width * 0.013, alignItems: 'flex-end' }]}>
                         <Text style={styles.cardLabel}>Response Speed</Text>
@@ -247,11 +236,7 @@ const SettingsScreen: React.FC = () => {
                             <Text style={styles.cardLabel}>Dark Mode</Text>
                             <Text style={styles.cardDesc}>Use dark theme</Text>
                         </View>
-                        <CustomSwitch
-                            value={settings.darkMode}
-                            onValueChange={(val: boolean) => updateSetting('darkMode', val)}
-                            disabled={loading}
-                        />
+                        <CustomSwitch value={settings.darkMode} onValueChange={(val: boolean) => updateSetting('darkMode', val)} disabled={loading} />
                     </View>
                     <View style={[styles.rowBetween, { marginVertical: width * 0.01, alignItems: 'center' }]}>
                         <Text style={styles.cardLabel}>Font Size</Text>
@@ -278,11 +263,7 @@ const SettingsScreen: React.FC = () => {
                             <Text style={styles.cardLabel}>Animations</Text>
                             <Text style={styles.cardDesc}>Enable smooth transitions</Text>
                         </View>
-                        <CustomSwitch
-                            value={settings.animations}
-                            onValueChange={(val: boolean) => updateSetting('animations', val)}
-                            disabled={loading}
-                        />
+                        <CustomSwitch value={settings.animations} onValueChange={(val: boolean) => updateSetting('animations', val)} disabled={loading} />
                     </View>
                 </View>
 
@@ -294,33 +275,21 @@ const SettingsScreen: React.FC = () => {
                             <Text style={styles.cardLabel}>Push Notifications</Text>
                             <Text style={styles.cardDesc}>Receive alerts and updates</Text>
                         </View>
-                        <CustomSwitch
-                            value={settings.pushNotif}
-                            onValueChange={(val: boolean) => updateSetting('pushNotif', val)}
-                            disabled={loading}
-                        />
+                        <CustomSwitch value={settings.pushNotif} onValueChange={(val: boolean) => updateSetting('pushNotif', val)} disabled={loading} />
                     </View>
                     <View style={styles.rowBetween}>
                         <View>
                             <Text style={styles.cardLabel}>Email Updates</Text>
                             <Text style={styles.cardDesc}>Weekly digest and news</Text>
                         </View>
-                        <CustomSwitch
-                            value={settings.emailUpd}
-                            onValueChange={(val: boolean) => updateSetting('emailUpd', val)}
-                            disabled={loading}
-                        />
+                        <CustomSwitch value={settings.emailUpd} onValueChange={(val: boolean) => updateSetting('emailUpd', val)} disabled={loading} />
                     </View>
                     <View style={styles.rowBetween}>
                         <View>
                             <Text style={styles.cardLabel}>Sound Effects</Text>
                             <Text style={styles.cardDesc}>Audio feedback for actions</Text>
                         </View>
-                        <CustomSwitch
-                            value={settings.soundFx}
-                            onValueChange={(val: boolean) => updateSetting('soundFx', val)}
-                            disabled={loading}
-                        />
+                        <CustomSwitch value={settings.soundFx} onValueChange={(val: boolean) => updateSetting('soundFx', val)} disabled={loading} />
                     </View>
                 </View>
 
@@ -330,19 +299,11 @@ const SettingsScreen: React.FC = () => {
                     <SettingRow label="Biometric Lock" desc="Use fingerprint or Face ID" onPress={() => { }} />
                     <View style={styles.rowBetween}>
                         <Text style={styles.cardLabel}>Data Encryption</Text>
-                        <CustomSwitch
-                            value={settings.dataEnc}
-                            onValueChange={(val: boolean) => updateSetting('dataEnc', val)}
-                            disabled={loading}
-                        />
+                        <CustomSwitch value={settings.dataEnc} onValueChange={(val: boolean) => updateSetting('dataEnc', val)} disabled={loading} />
                     </View>
                     <View style={styles.rowBetween}>
                         <Text style={styles.cardLabel}>Private Mode</Text>
-                        <CustomSwitch
-                            value={settings.privMode}
-                            onValueChange={(val: boolean) => updateSetting('privMode', val)}
-                            disabled={loading}
-                        />
+                        <CustomSwitch value={settings.privMode} onValueChange={(val: boolean) => updateSetting('privMode', val)} disabled={loading} />
                     </View>
                 </View>
 
@@ -403,7 +364,7 @@ const styles = StyleSheet.create({
         marginTop: width * 0.04,
         marginBottom: width * 0.025,
         padding: width * 0.03,
-        shadowColor: "#836945",
+        shadowColor: '#836945',
         shadowOpacity: 0.04,
         shadowRadius: 9,
         shadowOffset: { width: 0, height: 5 },
@@ -461,7 +422,7 @@ const styles = StyleSheet.create({
         marginHorizontal: width * 0.045,
         marginBottom: width * 0.018,
         padding: width * 0.033,
-        shadowColor: "#D8BC98",
+        shadowColor: '#D8BC98',
         shadowOpacity: 0.04,
         shadowRadius: 8,
         shadowOffset: { width: 0, height: 3 },
@@ -475,14 +436,14 @@ const styles = StyleSheet.create({
     },
     cardLabel: {
         color: brown,
-        fontSize: width * 0.040,
+        fontSize: width * 0.04,
         fontWeight: '700',
         marginBottom: 1,
         letterSpacing: 0.1,
     },
     cardDesc: {
         color: brown,
-        fontSize: width * 0.030,
+        fontSize: width * 0.03,
         opacity: 0.63,
         fontWeight: '400',
     },
@@ -499,7 +460,8 @@ const styles = StyleSheet.create({
         marginBottom: width * 0.011,
     },
     sliderMini: {
-        color: '#757179', fontSize: width * 0.033,
+        color: '#757179',
+        fontSize: width * 0.033,
     },
     listRow: {
         flexDirection: 'row',
@@ -511,11 +473,11 @@ const styles = StyleSheet.create({
     listRowLabel: {
         fontSize: width * 0.041,
         color: brown,
-        fontWeight: "600",
+        fontWeight: '600',
         flex: 1,
     },
     listRowDesc: {
-        fontSize: width * 0.030,
+        fontSize: width * 0.03,
         color: brown,
         opacity: 0.62,
         marginLeft: 8,
@@ -529,24 +491,6 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         letterSpacing: 1,
     },
-    // signOutBtn: {
-    //     flexDirection: 'row',
-    //     alignItems: 'center',
-    //     justifyContent: 'center',
-    //     alignSelf: 'center',
-    //     marginTop: width * 0.07,
-    //     paddingVertical: width * 0.038,
-    //     paddingHorizontal: width * 0.35,
-    //     borderRadius: 16,
-    //     backgroundColor: '#FFE5E2',
-    //     elevation: 2,
-    // },
-    // signOutBtnText: {
-    //     color: '#E14D42',
-    //     fontWeight: 'bold',
-    //     fontSize: width * 0.045,
-    //     letterSpacing: 0.6,
-    // },
 });
 
 export default SettingsScreen;
