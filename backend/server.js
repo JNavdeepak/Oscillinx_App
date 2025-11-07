@@ -11,7 +11,7 @@ app.use(cors());
 
 // Configuration
 const PORT = process.env.PORT || 5000;
-const OLLAMA_API_URL = process.env.OLLAMA_API_URL || 'http://16.16.146.175:11434/api/generate';
+const OLLAMA_API_URL = process.env.OLLAMA_API_URL || 'http://172.31.12.194:11434/api/generate';
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL || 'tinyllama';
 
 // Health check endpoint
@@ -72,7 +72,7 @@ app.post('/chat', async (req, res) => {
             return res.status(503).json({
                 success: false,
                 error: 'LLM service not reachable',
-                message: 'Check if Ollama is running on AWS instance (16.16.146.175:11434)',
+                message: 'Check if Ollama is running on AWS instance (172.31.12.194:11434)',
                 code: 'SERVICE_UNAVAILABLE'
             });
         }
