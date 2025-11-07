@@ -15,7 +15,7 @@ const msgBrown = '#633513';
 const borderRadius = 22;
 
 // Backend configuration
-const BACKEND_URL = 'http://192.168.1.X:5000'; // Replace X with your actual IP
+const BACKEND_URL = 'http://192.168.1.4:5000'; // Replace X with your actual IP
 
 export type ChatMessage = {
     id: string;
