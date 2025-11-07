@@ -77,12 +77,13 @@ const ChatScreen: React.FC = () => {
     }, []);
 
     // Send a message with AI response
+    // Send a message with AI response
     const handleSend = async () => {
+        // ---- 1. Ye initial checks waise hi rahenge ----
         if (!activeModel) {
             setError("No active model selected — please select one on Models screen.");
             return;
         }
-
         if (!inputText.trim()) {
             return;
         }
@@ -90,25 +91,46 @@ const ChatScreen: React.FC = () => {
         setSending(true);
         setError(null);
 
+        // ---- 2. Yahaan se naya optimized logic shuru hota hai ----
         try {
-            // 1. Save user message to database
-            const { error: insertError } = await supabase
+            // User ka message (ise local state mein add karein)
+            const userMessageText = inputText;
+            setInputText(''); // Input ko clear karein
+
+            const newUserMessage: ChatMessage = {
+                id: `temp_user_${Date.now()}`, // Ek temporary ID
+                text: userMessageText,
+                author: 'navdeepak',
+                created_at: new Date().toISOString()
+            };
+
+            // Message ko UI mein turant dikhayein
+            setMessages(prevMessages => [...prevMessages, newUserMessage]);
+
+            // Scroll ko call karein
+            setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+
+            // User ka message DB mein save karein (background mein)
+            const { data: savedUserMsg, error: insertError } = await supabase
                 .from('messages')
-                .insert([{
-                    text: inputText,
+                .insert({
+                    text: userMessageText,
                     author: 'navdeepak',
                     model_id: activeModel.id,
-                    created_at: new Date().toISOString()
-                }]);
+                    // created_at DB khud generate kar lega
+                })
+                .select()
+                .single();
 
             if (insertError) {
                 throw new Error(`Failed to save message: ${insertError.message}`);
             }
 
-            const userMessage = inputText;
-            setInputText('');
+            // (Optional) Temporary ID ko real ID se replace karein
+            setMessages(prev => prev.map(m => (m.id === newUserMessage.id ? { ...savedUserMsg, id: savedUserMsg.id } : m)));
 
-            // 2. Call backend for AI response with AbortController for timeout
+
+            // ---- 3. Ye aapka original 'fetch' logic hai jo AI ko call karta hai ----
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 seconds
 
@@ -121,7 +143,7 @@ const ChatScreen: React.FC = () => {
                     },
                     body: JSON.stringify({
                         model_id: activeModel.name || activeModel.id,
-                        user_message: userMessage
+                        user_message: userMessageText // 'userMessageText' ka use karein
                     }),
                     signal: controller.signal
                 });
@@ -134,31 +156,40 @@ const ChatScreen: React.FC = () => {
                 throw new Error(errorData.error || `AI service error: ${aiResponse.status}`);
             }
 
+            // ---- 4. Yahaan se naya logic continue hota hai ----
+
             const { bot_reply } = await aiResponse.json();
 
-            // 3. Save bot response to database
+            // Bot ka message (ise local state mein add karein)
+            const newBotMessage: ChatMessage = {
+                id: `temp_bot_${Date.now()}`,
+                text: bot_reply,
+                author: 'bot',
+                created_at: new Date().toISOString()
+            };
+
+            setMessages(prevMessages => [...prevMessages, newBotMessage]);
+            setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+
+            // Bot ka message DB mein save karein (background mein)
             const { error: botInsertError } = await supabase
                 .from('messages')
-                .insert([{
+                .insert({
                     text: bot_reply,
                     author: 'bot',
                     model_id: activeModel.id,
-                    created_at: new Date().toISOString()
-                }]);
+                });
 
             if (botInsertError) {
                 console.warn('Failed to save bot response:', botInsertError);
             }
 
-            // 4. Refresh messages
-            await fetchMessages();
+            // 5. fetchMessages() ko call karne ki zaroorat nahi hai
+            // await fetchMessages(); // <--- Ise HATA diya gaya hai
 
-            // 5. Auto scroll to bottom
-            setTimeout(() => {
-                scrollRef.current?.scrollToEnd({ animated: true });
-            }, 300);
 
         } catch (error: any) {
+            // ---- 6. Aapka original 'catch' block bilkul waise hi kaam karega ----
             if (error.name === 'AbortError') {
                 setError('Request timeout - Model is taking too long to respond. Try again.');
             } else if (error.message.includes('Failed to fetch')) {
@@ -167,7 +198,9 @@ const ChatScreen: React.FC = () => {
                 setError(`Error: ${error.message || String(error)}`);
             }
             console.error('Chat error:', error);
+
         } finally {
+            // ---- 7. 'finally' block bhi same rahega ----
             setSending(false);
         }
     };
