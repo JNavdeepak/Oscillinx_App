@@ -227,12 +227,12 @@ const ChatScreen: React.FC = () => {
 
         } catch (error: any) {
             // ---- 6. Aapka original 'catch' block bilkul waise hi kaam karega ----
-            if (error.name === 'AbortError') {
+            if (error?.name === 'AbortError') {
                 setError('Request timeout - Model is taking too long to respond. Try again.');
-            } else if (error.message.includes('Failed to fetch')) {
+            } else if (String(error).includes('Failed to fetch') || String(error).includes('Network request failed')) {
                 setError('Cannot reach backend. Make sure server is running on ' + backendUrl);
             } else {
-                setError(`Error: ${error.message || String(error)}`);
+                setError(`Error: ${error?.message || String(error)}`);
             }
             console.error('Chat error:', error);
 
