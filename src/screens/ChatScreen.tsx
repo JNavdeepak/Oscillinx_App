@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
     View, Text, StyleSheet, Dimensions, ScrollView, TextInput,
-    Image, TouchableOpacity, ActivityIndicator,
+    Image, TouchableOpacity, ActivityIndicator, Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/RootStack';
 import { supabase } from '../supabaseClient';
+import { config, emulatorBackendUrl } from '../config';
 
 const { width, height } = Dimensions.get('window');
 const homeBrown = '#4E1D02';
@@ -14,8 +15,7 @@ const backBrown = '#C5A790';
 const msgBrown = '#633513';
 const borderRadius = 22;
 
-// Backend configuration
-const BACKEND_URL = 'http://192.168.1.4:5000'; // Replace X with your actual IP
+const candidateUrls = [config.backendUrl, ...(Platform.OS === 'android' ? [emulatorBackendUrl] : [])];
 
 export type ChatMessage = {
     id: string;
@@ -32,6 +32,8 @@ const ChatScreen: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [sending, setSending] = useState<boolean>(false);
     const scrollRef = useRef<ScrollView>(null);
+    const [backendUrl, setBackendUrl] = useState<string>(candidateUrls[0]);
+    const [backendHealthy, setBackendHealthy] = useState<boolean>(false);
 
     // ---- Active Model State ----
     const [activeModel, setActiveModel] = useState<any>(null);
@@ -75,6 +77,34 @@ const ChatScreen: React.FC = () => {
     useEffect(() => {
         fetchMessages();
     }, []);
+
+    useEffect(() => {
+        const check = async () => {
+            for (const url of candidateUrls) {
+                const ok = await probeHealth(url);
+                if (ok) {
+                    setBackendUrl(url);
+                    setBackendHealthy(true);
+                    return;
+                }
+            }
+            setBackendHealthy(false);
+            setError('Cannot reach backend. Check server and network connectivity.');
+        };
+        check();
+    }, []);
+
+    const probeHealth = async (url: string): Promise<boolean> => {
+        try {
+            const controller = new AbortController();
+            const t = setTimeout(() => controller.abort(), 4000);
+            const res = await fetch(`${url}/health`, { signal: controller.signal });
+            clearTimeout(t);
+            return res.ok;
+        } catch {
+            return false;
+        }
+    };
 
     // Send a message with AI response
     // Send a message with AI response
@@ -136,7 +166,14 @@ const ChatScreen: React.FC = () => {
 
             let aiResponse;
             try {
-                aiResponse = await fetch(`${BACKEND_URL}/chat`, {
+                if (!backendHealthy) {
+                    const ok = await probeHealth(backendUrl);
+                    setBackendHealthy(ok);
+                    if (!ok) {
+                        throw new Error('Failed to fetch');
+                    }
+                }
+                aiResponse = await fetch(`${backendUrl}/chat`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -193,7 +230,7 @@ const ChatScreen: React.FC = () => {
             if (error.name === 'AbortError') {
                 setError('Request timeout - Model is taking too long to respond. Try again.');
             } else if (error.message.includes('Failed to fetch')) {
-                setError('Cannot reach backend. Make sure server is running on ' + BACKEND_URL);
+                setError('Cannot reach backend. Make sure server is running on ' + backendUrl);
             } else {
                 setError(`Error: ${error.message || String(error)}`);
             }
